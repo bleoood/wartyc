@@ -1,224 +1,162 @@
---// Services
-local TweenService = game:GetService("TweenService")
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
+--[[
+    ██╗    ██╗ █████╗ ██████╗ ██████╗
+    ██║    ██║██╔══██╗██╔══██╗██╔══██╗
+    ██║ █╗ ██║███████║██████╔╝██████╔╝
+    ██║███╗██║██╔══██║██╔══██╗██╔═══╝
+    ╚███╔███╔╝██║  ██║██║  ██║██║
+     ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝
+    War Tycoon Hub  |  v2.0
+--]]
+
+----------------------------------------------------------------
+-- SERVICES
+----------------------------------------------------------------
+local TweenService     = game:GetService("TweenService")
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
-local player = Players.LocalPlayer
-local camera = workspace.CurrentCamera
+local player  = Players.LocalPlayer
+local camera  = workspace.CurrentCamera
 
+----------------------------------------------------------------
+-- RAYFIELD
+----------------------------------------------------------------
 local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 
---// Character
-local function getChar()
-	local c = player.Character or player.CharacterAdded:Wait()
-	return c, c:WaitForChild("HumanoidRootPart")
+----------------------------------------------------------------
+-- CHARACTER HELPERS
+----------------------------------------------------------------
+local character, hrp
+
+local function refreshCharacter()
+    character = player.Character or player.CharacterAdded:Wait()
+    hrp       = character:WaitForChild("HumanoidRootPart")
 end
-local character, hrp = getChar()
-player.CharacterAdded:Connect(function()
-	character, hrp = getChar()
-end)
+refreshCharacter()
+player.CharacterAdded:Connect(refreshCharacter)
 
 ----------------------------------------------------------------
--- FOLDERS
+-- WORKSPACE FOLDERS
 ----------------------------------------------------------------
-local GS = workspace:WaitForChild("Game Systems")
-local crateFolder = GS["Collectibles Workspace"]:WaitForChild("PartCrate")
-local droneFolder = GS["Collectibles Workspace"]:WaitForChild("Drone")
-local oilFolder = GS["Collectibles Workspace"]:WaitForChild("OilBarrel")
-
-----------------------------------------------------------------
--- SETTINGS
-----------------------------------------------------------------
-local MODE = "Tween"
-
-local VEHICLE_ESP = false
-local IGNORE_EMPTY = true
-local IGNORE_SAME_TEAM = false
-local MAX_DISTANCE = 2000
-
-local DRONE_FARM = false
-local CRATE_FARM = false
-local OIL_FARM = false
-
-local AUTO_BUY = false
+local GS              = workspace:WaitForChild("Game Systems")
+local crateFolder     = GS["Collectibles Workspace"]:WaitForChild("PartCrate")
+local droneFolder     = GS["Collectibles Workspace"]:WaitForChild("Drone")
+local oilFolder       = GS["Collectibles Workspace"]:WaitForChild("OilBarrel")
 
 ----------------------------------------------------------------
--- PLAYER ESP SETTINGS
+-- GLOBAL STATE
+----------------------------------------------------------------
+local MODE           = "Tween"
+local MAX_DISTANCE   = 2000
+local VEHICLE_ESP    = false
+local IGNORE_EMPTY   = true
+local IGNORE_SAME    = false
+local DRONE_FARM     = false
+local CRATE_FARM     = false
+local OIL_FARM       = false
+local AUTO_BUY       = false
+
+-- Vehicle workspace names
+local vehicleFolderNames = {
+    ["Tank Workspace"]       = "Tank",
+    ["Vehicle Workspace"]    = "Ground",
+    ["Plane Workspace"]      = "Air",
+    ["Helicopter Workspace"] = "Heli",
+    ["Boat Workspace"]       = "Boat",
+}
+
+----------------------------------------------------------------
+-- ESP STATE
 ----------------------------------------------------------------
 local ESP = {
-	Box = {
-		Enabled = false,
-		Name = false,
-		Distance = false,
-		Health = false,
-		TeamCheck = false,
-		HealthType = "Bar",
-		Color = Color3.fromRGB(11, 69, 74),
-	},
-	Outlines = {
-		Enabled = false,
-		TeamCheck = false,
-		TeamColor = false,
-		AlwaysOnTop = true,
-		FillColor = Color3.fromRGB(75, 0, 10),
-		FillTransparency = 0,
-		OutlineColor = Color3.fromRGB(0, 0, 0),
-		OutlineTransparency = 0,
-	},
-	Tracers = {
-		Enabled = false,
-		TeamCheck = false,
-		TeamColor = false,
-		Color = Color3.fromRGB(75, 0, 10),
-	},
+    Box = {
+        Enabled   = false,
+        Name      = false,
+        Distance  = false,
+        Health    = false,
+        TeamCheck = false,
+        HealthType = "Bar",
+        Color     = Color3.fromRGB(11, 69, 74),
+    },
+    Outlines = {
+        Enabled          = false,
+        TeamCheck        = false,
+        TeamColor        = false,
+        AlwaysOnTop      = true,
+        FillColor        = Color3.fromRGB(75, 0, 10),
+        FillTransparency = 0,
+        OutlineColor     = Color3.fromRGB(255, 255, 255),
+        OutlineTransparency = 0,
+    },
+    Tracers = {
+        Enabled   = false,
+        TeamCheck = false,
+        TeamColor = false,
+        Color     = Color3.fromRGB(75, 0, 10),
+    },
 }
 
 ----------------------------------------------------------------
--- VEHICLE SETUP
+-- AIMBOT STATE
 ----------------------------------------------------------------
-local vehicleFolderNames = {
-	["Tank Workspace"] = "Tank",
-	["Vehicle Workspace"] = "Ground",
-	["Plane Workspace"] = "Air",
-	["Helicopter Workspace"] = "Heli",
-	["Boat Workspace"] = "Boat"
+local AIMBOT = {
+    Enabled    = false,
+    TeamCheck  = false,
+    WallCheck  = false,
+    ShowFov    = false,
+    Fov        = 150,
+    Smoothing  = 0,
+    AimPart    = "Head",
+    Active     = false,
+    FovColor   = Color3.fromRGB(255, 50, 50),
+    Thickness  = 1.5,
 }
 
 ----------------------------------------------------------------
--- DRONE RETURN
+-- FOV CIRCLE GUI
 ----------------------------------------------------------------
-local droneReturnCFrame = CFrame.new(
-	-1222.12744, 24.7984695, -4766.49121,
-	-0.0167001635, -3.66941038e-08, -0.999860525,
-	-6.4550683e-08, 1, -3.56210634e-08,
-	0.999860525, 6.3946807e-08, -0.0167001635
-)
+local fovGui = Instance.new("ScreenGui")
+fovGui.Name          = "WarpFovCircle"
+fovGui.ResetOnSpawn  = false
+fovGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+fovGui.Parent        = player:WaitForChild("PlayerGui")
 
-----------------------------------------------------------------
--- HELPERS
-----------------------------------------------------------------
-local function getTycoonRoot()
-	local tycoonsFolder = workspace:FindFirstChild("Tycoon")
-	tycoonsFolder = tycoonsFolder and (tycoonsFolder:FindFirstChild("Tycoons") or tycoonsFolder)
-	if not tycoonsFolder then return end
-	for _, tycoon in ipairs(tycoonsFolder:GetChildren()) do
-		if tycoon.Name == player.Team.Name then return tycoon end
-	end
-end
+local fovFrame = Instance.new("Frame")
+fovFrame.BackgroundTransparency = 1
+fovFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+fovFrame.Size = UDim2.fromOffset(AIMBOT.Fov * 2, AIMBOT.Fov * 2)
+fovFrame.Parent = fovGui
 
-local function getDroneCollector()
-	local root = getTycoonRoot()
-	if not root then return end
-	return root
-		:FindFirstChild("PurchasedObjects")
-		and root.PurchasedObjects
-		:FindFirstChild("Lab Terminal Screen")
-		and root.PurchasedObjects["Lab Terminal Screen"]
-		:FindFirstChild("Research Screen")
-		and root.PurchasedObjects["Lab Terminal Screen"]["Research Screen"]
-		:FindFirstChild("Persistent")
-		and root.PurchasedObjects["Lab Terminal Screen"]["Research Screen"].Persistent
-		:FindFirstChild("Collector")
-end
+local fovCorner = Instance.new("UICorner")
+fovCorner.CornerRadius = UDim.new(1, 0)
+fovCorner.Parent = fovFrame
 
-local function getResourceCollector()
-	local root = getTycoonRoot()
-	if not root then return end
-	local ess = root:FindFirstChild("Essentials")
-	if not ess then return end
-	local oilCol = ess:FindFirstChild("Oil Collector")
-	if not oilCol then return end
-	local col = oilCol:FindFirstChild("Collector")
-	if not col then return end
-	return col:FindFirstChild("Plane")
-end
-
-
-local function tweenTo(cf)
-	if MODE == "Instant" then
-		hrp.CFrame = cf
-		return
-	end
-	local dist = (hrp.Position - cf.Position).Magnitude
-	local t = math.clamp(dist / 120, 0.25, 6)
-	local tw = TweenService:Create(hrp, TweenInfo.new(t, Enum.EasingStyle.Linear), { CFrame = cf })
-	tw:Play()
-	tw.Completed:Wait()
-end
+local fovStroke = Instance.new("UIStroke")
+fovStroke.Color     = AIMBOT.FovColor
+fovStroke.Thickness = AIMBOT.Thickness
+fovStroke.Parent    = fovFrame
 
 ----------------------------------------------------------------
--- TYCOON AUTO BUY
+-- ESP CONTAINERS
 ----------------------------------------------------------------
-local function getCash()
-	local stats = player:FindFirstChild("leaderstats")
-	if not stats then return 0 end
-	local cash = stats:FindFirstChild("Cash")
-	return cash and cash.Value or 0
-end
+local espGui = Instance.new("ScreenGui")
+espGui.Name           = "WarpESP"
+espGui.ResetOnSpawn   = false
+espGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+espGui.Parent         = player:WaitForChild("PlayerGui")
 
-local function getPlayerTycoon()
-	local tycoonsFolder = workspace:FindFirstChild("Tycoon") or workspace:FindFirstChild("Tycoons")
-	if not tycoonsFolder then return end
-	local tycoons = tycoonsFolder:FindFirstChild("Tycoons") or tycoonsFolder
-	for _, tycoon in ipairs(tycoons:GetChildren()) do
-		if tycoon.Name == player.Team.Name then return tycoon end
-	end
-end
+local outlineGui = Instance.new("ScreenGui")
+outlineGui.Name           = "WarpOutlines"
+outlineGui.ResetOnSpawn   = false
+outlineGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+outlineGui.Parent         = player:WaitForChild("PlayerGui")
 
-local function getButtons(tycoon)
-	local buttonsFolder = tycoon:FindFirstChild("UnpurchasedButtons")
-	if not buttonsFolder then return {} end
-	local list = {}
-	for _, btn in ipairs(buttonsFolder:GetChildren()) do
-		if btn:IsA("Model") or btn:IsA("Part") then
-			local typeAttr = btn:GetAttribute("ButtonType")
-			local price = btn:GetAttribute("Price")
-			if typeAttr == "Cash" and price then
-				table.insert(list, { instance = btn, price = price })
-			end
-		end
-	end
-	return list
-end
-
-local function getButtonCFrame(btn)
-	if btn:IsA("BasePart") then
-		return btn.CFrame
-	elseif btn:IsA("Model") then
-		if btn.PrimaryPart then return btn.PrimaryPart.CFrame end
-		local part = btn:FindFirstChildWhichIsA("BasePart")
-		if part then return part.CFrame end
-	end
-end
-
-local function buyButton(btn)
-	local cf = getButtonCFrame(btn)
-	if not cf then return end
-	hrp.CFrame = cf + Vector3.new(0, 3, 0)
-	task.wait(0.25)
-end
-
-----------------------------------------------------------------
--- GENERIC COLLECTOR
-----------------------------------------------------------------
-local function collectModel(model)
-	local promptPart = model:FindFirstChild("PromptPart", true)
-	if not promptPart then return end
-	local prompt = promptPart:FindFirstChildWhichIsA("ProximityPrompt", true)
-	if not prompt or not prompt.Enabled then return end
-	tweenTo(promptPart.CFrame)
-	task.wait(0.25)
-	hrp.CFrame = promptPart.CFrame + Vector3.new(0, 3, 0)
-	pcall(function() fireproximityprompt(prompt) end)
-	local t0 = tick()
-	repeat task.wait(0.2)
-	until not prompt.Parent or not prompt.Enabled or tick() - t0 > 10
-	local plane = getResourceCollector()
-	if plane then
-		tweenTo(plane.CFrame + Vector3.new(0, 3, 0))
-	end
-end
+local tracerGui = Instance.new("ScreenGui")
+tracerGui.Name           = "WarpTracers"
+tracerGui.ResetOnSpawn   = false
+tracerGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+tracerGui.Parent         = player:WaitForChild("PlayerGui")
 
 ----------------------------------------------------------------
 -- VEHICLE ESP
@@ -226,491 +164,675 @@ end
 local vehicleHighlights = {}
 
 local function clearVehicleHighlights()
-	for _, h in pairs(vehicleHighlights) do
-		if h then h:Destroy() end
-	end
-	vehicleHighlights = {}
-end
-
-local function getSeat(model)
-	for _, v in ipairs(model:GetDescendants()) do
-		if v:IsA("VehicleSeat") or v:IsA("Seat") then return v end
-	end
-end
-
-local function getDriver(model)
-	local seat = getSeat(model)
-	if not seat or not seat.Occupant then return end
-	return Players:GetPlayerFromCharacter(seat.Occupant.Parent)
-end
-
-local function applyVehicleHighlight(model)
-	if vehicleHighlights[model] then return end
-	local h = Instance.new("Highlight")
-	h.FillTransparency = 0.4
-	h.Parent = model
-	vehicleHighlights[model] = h
+    for _, h in pairs(vehicleHighlights) do
+        if h and h.Parent then h:Destroy() end
+    end
+    vehicleHighlights = {}
 end
 
 local function getVehicles()
-	local list = {}
-	for fname in pairs(vehicleFolderNames) do
-		local folder = GS:FindFirstChild(fname)
-		if folder then
-			for _, m in ipairs(folder:GetChildren()) do
-				if m:IsA("Model") then table.insert(list, m) end
-			end
-		end
-	end
-	return list
+    local list = {}
+    for fname in pairs(vehicleFolderNames) do
+        local folder = GS:FindFirstChild(fname)
+        if folder then
+            for _, m in ipairs(folder:GetChildren()) do
+                if m:IsA("Model") then
+                    table.insert(list, m)
+                end
+            end
+        end
+    end
+    return list
+end
+
+local function getVehicleSeat(model)
+    for _, v in ipairs(model:GetDescendants()) do
+        if v:IsA("VehicleSeat") or v:IsA("Seat") then return v end
+    end
+end
+
+local function getDriver(model)
+    local seat = getVehicleSeat(model)
+    if not seat or not seat.Occupant then return nil end
+    return Players:GetPlayerFromCharacter(seat.Occupant.Parent)
+end
+
+local function applyVehicleHighlight(model)
+    if vehicleHighlights[model] then return end
+    local h = Instance.new("Highlight")
+    h.FillTransparency  = 0.4
+    h.OutlineTransparency = 0
+    h.Parent = model
+    vehicleHighlights[model] = h
+end
+
+-- Rainbow vehicle highlights
+RunService.RenderStepped:Connect(function()
+    if not VEHICLE_ESP then return end
+    local color = Color3.fromHSV((tick() % 5) / 5, 1, 1)
+    for _, h in pairs(vehicleHighlights) do
+        if h and h.Parent then
+            h.FillColor    = color
+            h.OutlineColor = color
+        end
+    end
+end)
+
+----------------------------------------------------------------
+-- ESP: OUTLINE
+----------------------------------------------------------------
+local function buildOutline(plr)
+    local hl = Instance.new("Highlight")
+    hl.Name    = plr.Name
+    hl.Enabled = false
+    hl.Parent  = outlineGui
+
+    local function setAdornee(char)
+        hl.Adornee = char
+    end
+    if plr.Character then setAdornee(plr.Character) end
+    plr.CharacterAdded:Connect(setAdornee)
+
+    task.spawn(function()
+        while task.wait(0.1) do
+            if not Players:FindFirstChild(plr.Name) then
+                hl:Destroy() return
+            end
+            local cfg  = ESP.Outlines
+            local char = plr.Character
+            local hum  = char and char:FindFirstChildWhichIsA("Humanoid")
+
+            if char and hum and hum.Health > 0 and plr ~= player then
+                local hide = cfg.TeamCheck and plr.TeamColor == player.TeamColor
+                hl.Enabled  = cfg.Enabled and not hide
+                hl.DepthMode = cfg.AlwaysOnTop
+                    and Enum.HighlightDepthMode.AlwaysOnTop
+                    or  Enum.HighlightDepthMode.Occluded
+                hl.FillColor            = cfg.TeamColor and plr.TeamColor.Color or cfg.FillColor
+                hl.FillTransparency     = cfg.FillTransparency
+                hl.OutlineColor         = cfg.OutlineColor
+                hl.OutlineTransparency  = cfg.OutlineTransparency
+            else
+                hl.Enabled = false
+            end
+        end
+    end)
 end
 
 ----------------------------------------------------------------
--- PLAYER ESP SYSTEM
+-- ESP: BOX + LABELS
 ----------------------------------------------------------------
-local espContainer = Instance.new("ScreenGui")
-espContainer.Name = "OperatorESP"
-espContainer.Parent = player:WaitForChild("PlayerGui")
-espContainer.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-espContainer.ResetOnSpawn = false
+local function buildBox(plr)
+    -- Root billboard anchored to HRP
+    local bbg = Instance.new("BillboardGui")
+    bbg.Name             = plr.Name
+    bbg.AlwaysOnTop      = true
+    bbg.Size             = UDim2.new(4, 0, 5.4, 0)
+    bbg.ClipsDescendants = false
+    bbg.Enabled          = false
+    bbg.Parent           = espGui
 
-local outlineContainer = Instance.new("ScreenGui")
-outlineContainer.Name = "OperatorOutlines"
-outlineContainer.Parent = player:WaitForChild("PlayerGui")
-outlineContainer.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-outlineContainer.ResetOnSpawn = false
+    -- Four edge frames that form the box outline
+    local function makeEdge()
+        local f = Instance.new("Frame")
+        f.BorderSizePixel      = 0
+        f.BackgroundColor3     = ESP.Box.Color
+        f.Parent               = bbg
+        return f
+    end
+    local eLeft   = makeEdge(); eLeft.Size     = UDim2.new(0, 1, 1, 0); eLeft.Position   = UDim2.new(0, 0, 0, 0)
+    local eRight  = makeEdge(); eRight.Size    = UDim2.new(0, 1, 1, 0); eRight.Position  = UDim2.new(1, -1, 0, 0)
+    local eTop    = makeEdge(); eTop.Size      = UDim2.new(1, 0, 0, 1); eTop.Position    = UDim2.new(0, 0, 0, 0)
+    local eBottom = makeEdge(); eBottom.Size   = UDim2.new(1, 0, 0, 1); eBottom.Position = UDim2.new(0, 0, 1, -1)
 
-local tracerContainer = Instance.new("ScreenGui")
-tracerContainer.Name = "OperatorTracers"
-tracerContainer.Parent = player:WaitForChild("PlayerGui")
-tracerContainer.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-tracerContainer.ResetOnSpawn = false
+    -- Info billboard (name / distance / health text) placed to the right of the box
+    local infoBbg = Instance.new("BillboardGui")
+    infoBbg.Name             = plr.Name .. "_info"
+    infoBbg.AlwaysOnTop      = true
+    infoBbg.Size             = UDim2.new(3, 0, 0, 60)
+    infoBbg.StudsOffset      = Vector3.new(3.8, -3, 0)
+    infoBbg.ClipsDescendants = false
+    infoBbg.Enabled          = false
+    infoBbg.Parent           = espGui
 
-local function addOutline(plr)
-	local highlight = Instance.new("Highlight")
-	highlight.Parent = outlineContainer
-	highlight.Name = plr.Name
-	highlight.Enabled = false
+    local function makeLabel(yPos, textSize)
+        local lbl = Instance.new("TextLabel")
+        lbl.BackgroundTransparency = 1
+        lbl.TextStrokeTransparency = 0.6
+        lbl.TextStrokeColor3       = Color3.new(0, 0, 0)
+        lbl.TextXAlignment         = Enum.TextXAlignment.Left
+        lbl.Font                   = Enum.Font.GothamBold
+        lbl.TextSize               = textSize or 13
+        lbl.Size                   = UDim2.new(1, 0, 0, 18)
+        lbl.Position               = UDim2.new(0, 0, 0, yPos)
+        lbl.Parent                 = infoBbg
+        return lbl
+    end
 
-	if plr.Character then highlight.Adornee = plr.Character end
-	plr.CharacterAdded:Connect(function(char) highlight.Adornee = char end)
+    local nameLabel   = makeLabel(0, 13)
+    local distLabel   = makeLabel(18, 11)
+    local healthLabel = makeLabel(36, 11)
+    nameLabel.Text    = plr.Name
 
-	task.spawn(function()
-		while task.wait(0.1) do
-			if not game:GetService("Players"):FindFirstChild(plr.Name) then
-				highlight:Destroy()
-				break
-			end
+    -- Health bar billboard
+    local healthBbg = Instance.new("BillboardGui")
+    healthBbg.Name             = plr.Name .. "_hp"
+    healthBbg.AlwaysOnTop      = true
+    healthBbg.Size             = UDim2.new(4.5, 0, 6, 0)
+    healthBbg.ClipsDescendants = false
+    healthBbg.Enabled          = false
+    healthBbg.Parent           = espGui
 
-			local char = plr.Character
-			local hum = char and char:FindFirstChildWhichIsA("Humanoid")
-			if plr ~= player and char and hum and hum.Health > 0 then
-				local cfg = ESP.Outlines
-				if cfg.Enabled then
-					if cfg.TeamCheck and plr.TeamColor == player.TeamColor then
-						highlight.Enabled = false
-					else
-						highlight.Enabled = true
-					end
-				else
-					highlight.Enabled = false
-				end
+    local barBg = Instance.new("Frame")
+    barBg.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    barBg.Size             = UDim2.new(0.04, 0, 0.9, 0)
+    barBg.Position         = UDim2.new(0, 0, 0.05, 0)
+    barBg.BorderSizePixel  = 0
+    barBg.Parent           = healthBbg
 
-				highlight.DepthMode = cfg.AlwaysOnTop
-					and Enum.HighlightDepthMode.AlwaysOnTop
-					or Enum.HighlightDepthMode.Occluded
+    local barFill = Instance.new("Frame")
+    barFill.BorderSizePixel  = 0
+    barFill.BackgroundColor3 = Color3.fromRGB(80, 220, 60)
+    barFill.AnchorPoint      = Vector2.new(0, 1)
+    barFill.Position         = UDim2.new(0, 0, 1, 0)
+    barFill.Size             = UDim2.new(1, 0, 1, 0)
+    barFill.Parent           = barBg
 
-				highlight.FillColor = cfg.TeamColor and plr.TeamColor.Color or cfg.FillColor
-				highlight.FillTransparency = cfg.FillTransparency
-				highlight.OutlineColor = cfg.OutlineColor
-				highlight.OutlineTransparency = cfg.OutlineTransparency
-			else
-				highlight.Enabled = false
-			end
-		end
-	end)
+    -- Adornee helper
+    local function setAdornees(hrpPart)
+        bbg.Adornee      = hrpPart
+        infoBbg.Adornee  = hrpPart
+        healthBbg.Adornee = hrpPart
+    end
+
+    if plr.Character then
+        local hrpPart = plr.Character:FindFirstChild("HumanoidRootPart")
+        if hrpPart then setAdornees(hrpPart) end
+    end
+    plr.CharacterAdded:Connect(function(char)
+        setAdornees(char:WaitForChild("HumanoidRootPart"))
+    end)
+
+    -- Update loop
+    task.spawn(function()
+        while task.wait(0.1) do
+            if not Players:FindFirstChild(plr.Name) then
+                bbg:Destroy()
+                infoBbg:Destroy()
+                healthBbg:Destroy()
+                return
+            end
+
+            local cfg  = ESP.Box
+            local char = plr.Character
+            local hum  = char and char:FindFirstChildWhichIsA("Humanoid")
+            local myHRP = character and character:FindFirstChild("HumanoidRootPart")
+
+            if plr ~= player and char and hum and hum.Health > 0 then
+                local hide    = cfg.TeamCheck and plr.TeamColor == player.TeamColor
+                local visible = cfg.Enabled and not hide
+
+                -- Box visibility
+                bbg.Enabled      = visible
+                infoBbg.Enabled  = visible
+                healthBbg.Enabled = visible and cfg.Health
+
+                -- Edge colors
+                local col = cfg.Color
+                eLeft.BackgroundColor3   = col
+                eRight.BackgroundColor3  = col
+                eTop.BackgroundColor3    = col
+                eBottom.BackgroundColor3 = col
+
+                -- Edge visibility (only show when box toggle is on)
+                eLeft.Visible   = visible
+                eRight.Visible  = visible
+                eTop.Visible    = visible
+                eBottom.Visible = visible
+
+                -- Name label
+                nameLabel.TextColor3 = col
+                nameLabel.Visible    = cfg.Name
+                nameLabel.Text       = plr.Name
+
+                -- Distance label
+                distLabel.TextColor3 = col
+                distLabel.Visible    = cfg.Distance
+                if cfg.Distance and myHRP then
+                    local hrpPart2 = char:FindFirstChild("HumanoidRootPart")
+                    if hrpPart2 then
+                        local d = math.floor(0.5 + (myHRP.Position - hrpPart2.Position).Magnitude)
+                        distLabel.Text = d .. " studs"
+                    end
+                end
+
+                -- Health
+                healthLabel.TextColor3 = col
+                if cfg.Health then
+                    local pct = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
+                    barFill.Size = UDim2.new(1, 0, pct, 0)
+                    -- Gradient green → red
+                    barFill.BackgroundColor3 = Color3.fromRGB(
+                        math.floor(255 * (1 - pct)),
+                        math.floor(200 * pct),
+                        40
+                    )
+                    healthLabel.Text    = string.format("HP %d/%d", math.floor(hum.Health), math.floor(hum.MaxHealth))
+                    healthLabel.Visible = cfg.HealthType == "Text" or cfg.HealthType == "Both"
+                    barBg.Visible       = cfg.HealthType == "Bar"  or cfg.HealthType == "Both"
+                else
+                    healthLabel.Visible = false
+                    barBg.Visible       = false
+                end
+            else
+                bbg.Enabled       = false
+                infoBbg.Enabled   = false
+                healthBbg.Enabled = false
+            end
+        end
+    end)
 end
 
-local function addBox(plr)
-	local bbg = Instance.new("BillboardGui", espContainer)
-	bbg.Name = plr.Name
-	bbg.AlwaysOnTop = true
-	bbg.Size = UDim2.new(4, 0, 5.4, 0)
-	bbg.ClipsDescendants = false
-	bbg.Enabled = false
+----------------------------------------------------------------
+-- ESP: TRACERS
+----------------------------------------------------------------
+local function buildTracer(plr)
+    local line = Instance.new("Frame")
+    line.Name             = plr.Name
+    line.AnchorPoint      = Vector2.new(0.5, 0.5)
+    line.BorderSizePixel  = 0
+    line.Visible          = false
+    line.Parent           = tracerGui
 
-	local box = Instance.new("Frame", bbg)
-	box.Size = UDim2.new(1, 0, 1, 0)
-	box.BorderSizePixel = 1
-	box.BackgroundTransparency = 1
+    RunService.RenderStepped:Connect(function()
+        if not Players:FindFirstChild(plr.Name) then
+            line:Destroy() return
+        end
 
-	local function makeSide()
-		local f = Instance.new("Frame", box)
-		f.BorderSizePixel = 1
-		f.BackgroundColor3 = ESP.Box.Color
-		return f
-	end
-	local left = makeSide(); left.Size = UDim2.new(0, 1, 1, 0)
-	local right = makeSide(); right.Size = UDim2.new(0, 1, 1, 0); right.Position = UDim2.new(1, -1, 0, 0)
-	local top = makeSide(); top.Size = UDim2.new(1, 0, 0, 1)
-	local bottom = makeSide(); bottom.Size = UDim2.new(1, 0, 0, 1); bottom.Position = UDim2.new(0, 0, 1, -1)
+        local cfg  = ESP.Tracers
+        local char = plr.Character
+        local hum  = char and char:FindFirstChildWhichIsA("Humanoid")
 
-	local info = Instance.new("BillboardGui", bbg)
-	info.Name = "info"
-	info.Size = UDim2.new(3, 0, 0, 54)
-	info.StudsOffset = Vector3.new(3.6, -3, 0)
-	info.AlwaysOnTop = true
-	info.ClipsDescendants = false
-	info.Enabled = false
+        if plr ~= player and char and hum and hum.Health > 0 then
+            local hrpPart = char:FindFirstChild("HumanoidRootPart")
+            if not hrpPart then line.Visible = false return end
 
-	local nameLabel = Instance.new("TextLabel", info)
-	nameLabel.BackgroundTransparency = 1
-	nameLabel.TextStrokeTransparency = 0
-	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-	nameLabel.Size = UDim2.new(0, 100, 0, 18)
-	nameLabel.Text = plr.Name
-	nameLabel.TextColor3 = ESP.Box.Color
-	nameLabel.Font = Enum.Font.GothamBold
-	nameLabel.TextSize = 13
+            local screenPt, onScreen = camera:WorldToViewportPoint(hrpPart.Position)
+            if not onScreen then line.Visible = false return end
 
-	local distLabel = Instance.new("TextLabel", info)
-	distLabel.BackgroundTransparency = 1
-	distLabel.TextStrokeTransparency = 0
-	distLabel.TextXAlignment = Enum.TextXAlignment.Left
-	distLabel.Size = UDim2.new(0, 100, 0, 18)
-	distLabel.Position = UDim2.new(0, 0, 0, 18)
-	distLabel.TextColor3 = ESP.Box.Color
-	distLabel.Font = Enum.Font.Gotham
-	distLabel.TextSize = 12
+            local dist    = math.max(1, (camera.CFrame.Position - hrpPart.Position).Magnitude)
+            local target  = Vector2.new(screenPt.X, screenPt.Y + (2500 / dist))
+            local origin  = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
+            local mid     = (origin + target) / 2
+            local length  = (origin - target).Magnitude
+            local angle   = math.deg(math.atan2(target.Y - origin.Y, target.X - origin.X))
 
-	local healthLabel = Instance.new("TextLabel", info)
-	healthLabel.BackgroundTransparency = 1
-	healthLabel.TextStrokeTransparency = 0
-	healthLabel.TextXAlignment = Enum.TextXAlignment.Left
-	healthLabel.Size = UDim2.new(0, 100, 0, 18)
-	healthLabel.Position = UDim2.new(0, 0, 0, 36)
-	healthLabel.TextColor3 = ESP.Box.Color
-	healthLabel.Font = Enum.Font.Gotham
-	healthLabel.TextSize = 12
-
-	local healthBBG = Instance.new("BillboardGui", bbg)
-	healthBBG.Name = "healthBBG"
-	healthBBG.Size = UDim2.new(4.5, 0, 6, 0)
-	healthBBG.AlwaysOnTop = true
-	healthBBG.ClipsDescendants = false
-	healthBBG.Enabled = false
-
-	local healthBar = Instance.new("Frame", healthBBG)
-	healthBar.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-	healthBar.Size = UDim2.new(0.04, 0, 0.9, 0)
-	healthBar.Position = UDim2.new(0, 0, 0.05, 0)
-
-	local bar = Instance.new("Frame", healthBar)
-	bar.BackgroundColor3 = Color3.fromRGB(94, 255, 69)
-	bar.BorderSizePixel = 0
-	bar.AnchorPoint = Vector2.new(0, 1)
-	bar.Position = UDim2.new(0, 0, 1, 0)
-	bar.Size = UDim2.new(1, 0, 1, 0)
-
-	if plr.Character then
-		bbg.Adornee = plr.Character:FindFirstChild("HumanoidRootPart")
-		info.Adornee = bbg.Adornee
-		healthBBG.Adornee = bbg.Adornee
-	end
-	plr.CharacterAdded:Connect(function(char)
-		local hrpPart = char:WaitForChild("HumanoidRootPart")
-		bbg.Adornee = hrpPart
-		info.Adornee = hrpPart
-		healthBBG.Adornee = hrpPart
-	end)
-
-	task.spawn(function()
-		while task.wait(0.1) do
-			if not game:GetService("Players"):FindFirstChild(plr.Name) then
-				bbg:Destroy()
-				break
-			end
-
-			local char = plr.Character
-			local hum = char and char:FindFirstChildWhichIsA("Humanoid")
-			local myHRP = character and character:FindFirstChild("HumanoidRootPart")
-
-			if plr ~= player and char and hum and hum.Health > 0 then
-				local cfg = ESP.Box
-				local hide = cfg.TeamCheck and plr.TeamColor == player.TeamColor
-
-				bbg.Enabled = cfg.Enabled and not hide
-				info.Enabled = bbg.Enabled
-				healthBBG.Enabled = bbg.Enabled and cfg.Health
-
-				local col = cfg.Color
-				left.BackgroundColor3 = col
-				right.BackgroundColor3 = col
-				top.BackgroundColor3 = col
-				bottom.BackgroundColor3 = col
-				nameLabel.TextColor3 = col
-				distLabel.TextColor3 = col
-				healthLabel.TextColor3 = col
-
-				box.Visible = cfg.Enabled
-				nameLabel.Visible = cfg.Name
-				distLabel.Visible = cfg.Distance
-				if cfg.Distance and myHRP then
-					local d = math.floor(0.5 + (myHRP.Position - char.HumanoidRootPart.Position).Magnitude)
-					distLabel.Text = d .. " studs"
-				end
-
-				if cfg.Health then
-					healthLabel.Text = "HP: " .. math.floor(hum.Health)
-					bar.Size = UDim2.new(1, 0, hum.Health / hum.MaxHealth, 0)
-					healthLabel.Visible = cfg.HealthType == "Text" or cfg.HealthType == "Both"
-					healthBar.Visible = cfg.HealthType == "Bar" or cfg.HealthType == "Both"
-				else
-					healthLabel.Visible = false
-					healthBar.Visible = false
-				end
-			else
-				bbg.Enabled = false
-				info.Enabled = false
-				healthBBG.Enabled = false
-			end
-		end
-	end)
+            local hide    = cfg.TeamCheck and plr.TeamColor == player.TeamColor
+            line.Visible          = cfg.Enabled and not hide
+            line.BackgroundColor3 = cfg.TeamColor and plr.TeamColor.Color or cfg.Color
+            line.Position         = UDim2.fromOffset(mid.X, mid.Y)
+            line.Size             = UDim2.fromOffset(length, 1)
+            line.Rotation         = angle
+        else
+            line.Visible = false
+        end
+    end)
 end
 
-local function addTracer(plr)
-	local tracer = Instance.new("Frame", tracerContainer)
-	tracer.Name = plr.Name
-	tracer.Active = false
-	tracer.AnchorPoint = Vector2.new(0.5, 0.5)
-	tracer.Visible = false
-	tracer.BorderSizePixel = 0
-
-	RunService.RenderStepped:Connect(function()
-		local char = plr.Character
-		local hum = char and char:FindFirstChildWhichIsA("Humanoid")
-
-		if not game:GetService("Players"):FindFirstChild(plr.Name) then
-			tracer:Destroy()
-			return
-		end
-
-		if plr ~= player and char and hum and hum.Health > 0 then
-			local cfg = ESP.Tracers
-			local hrpPart = char:FindFirstChild("HumanoidRootPart")
-			if not hrpPart then tracer.Visible = false return end
-
-			local screenPoint, onScreen = camera:WorldToScreenPoint(hrpPart.Position)
-			if not onScreen then tracer.Visible = false return end
-
-			local distance = math.floor(0.5 + (camera.CFrame.Position - hrpPart.Position).Magnitude)
-			local targetPoint = Vector2.new(screenPoint.X, screenPoint.Y + (2500 / distance))
-			local origin = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
-			local midpoint = (origin + targetPoint) / 2
-			local length = (origin - targetPoint).Magnitude
-			local angle = math.deg(math.atan2(targetPoint.Y - origin.Y, targetPoint.X - origin.X))
-
-			local hide = cfg.TeamCheck and plr.TeamColor == player.TeamColor
-			tracer.Visible = cfg.Enabled and not hide
-			tracer.BackgroundColor3 = cfg.TeamColor and plr.TeamColor.Color or cfg.Color
-			tracer.Position = UDim2.new(0, midpoint.X, 0, midpoint.Y)
-			tracer.Size = UDim2.new(0, length, 0, 2)
-			tracer.Rotation = angle
-		else
-			tracer.Visible = false
-		end
-	end)
-end
-
-local function initPlayerESP(plr)
-	addOutline(plr)
-	addBox(plr)
-	addTracer(plr)
+----------------------------------------------------------------
+-- INIT ESP FOR A PLAYER
+----------------------------------------------------------------
+local function initESP(plr)
+    buildOutline(plr)
+    buildBox(plr)
+    buildTracer(plr)
 end
 
 for _, plr in ipairs(Players:GetPlayers()) do
-	if plr ~= player then initPlayerESP(plr) end
+    if plr ~= player then initESP(plr) end
 end
-Players.PlayerAdded:Connect(function(plr)
-	initPlayerESP(plr)
+Players.PlayerAdded:Connect(initESP)
+
+----------------------------------------------------------------
+-- AIMBOT HELPERS
+----------------------------------------------------------------
+local function isVisible(pos)
+    if not AIMBOT.WallCheck then return true end
+    local obscuring = camera:GetPartsObscuringTarget({pos}, {camera, character})
+    return #obscuring == 0
+end
+
+local function getAimbotTarget()
+    local bestMag = AIMBOT.Fov
+    local target  = nil
+    local mouse   = UserInputService:GetMouseLocation()
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == player then continue end
+        if AIMBOT.TeamCheck and plr.Team == player.Team then continue end
+        local char2 = plr.Character
+        local part  = char2 and char2:FindFirstChild(AIMBOT.AimPart)
+        local hum   = char2 and char2:FindFirstChildWhichIsA("Humanoid")
+        if not part or not hum or hum.Health <= 0 then continue end
+
+        local screenPt, onScreen = camera:WorldToViewportPoint(part.Position)
+        if not onScreen then continue end
+
+        local mag = (Vector2.new(screenPt.X, screenPt.Y) - mouse).Magnitude
+        if mag < bestMag and isVisible(part.Position) then
+            bestMag = mag
+            target  = plr
+        end
+    end
+    return target
+end
+
+local function stepAimbot()
+    local target = getAimbotTarget()
+    if not target then return end
+    local part = target.Character and target.Character:FindFirstChild(AIMBOT.AimPart)
+    if not part then return end
+
+    local smooth = math.max(AIMBOT.Smoothing * 0.01, 0.001)
+    local dist   = (hrp.Position - part.Position).Magnitude
+    local scale  = math.max(dist / 10, 1)
+    local lookAt = camera.CFrame:PointToWorldSpace(
+        Vector3.new(0, 0, -smooth * scale)
+    ):Lerp(part.Position, 0.015)
+    camera.CFrame = CFrame.lookAt(camera.CFrame.Position, lookAt)
+end
+
+-- Aimbot + FOV circle update on RenderStepped
+RunService.RenderStepped:Connect(function()
+    -- Aimbot
+    if AIMBOT.Enabled and AIMBOT.Active then
+        stepAimbot()
+    end
+
+    -- FOV circle
+    local mouse = UserInputService:GetMouseLocation()
+    fovFrame.Position = UDim2.fromOffset(mouse.X, mouse.Y)
+    local diameter = AIMBOT.Fov * 2
+    fovFrame.Size     = UDim2.fromOffset(diameter, diameter)
+    fovFrame.Visible  = AIMBOT.ShowFov and AIMBOT.Enabled
+    fovStroke.Color   = AIMBOT.FovColor
+    fovStroke.Thickness = AIMBOT.Thickness
+end)
+
+-- Mouse button aimbot activation
+UserInputService.InputBegan:Connect(function(i, gp)
+    if gp then return end
+    if i.UserInputType == Enum.UserInputType.MouseButton2 then
+        AIMBOT.Active = true
+    end
+end)
+UserInputService.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton2 then
+        AIMBOT.Active = false
+    end
 end)
 
 ----------------------------------------------------------------
--- DRONE SYSTEM
+-- TYCOON HELPERS
 ----------------------------------------------------------------
-local function getDrones()
-	local list = {}
-	for _, d in ipairs(droneFolder:GetChildren()) do
-		if d:IsA("Model") and d.Name:lower():find("crasheddrone") then
-			table.insert(list, d)
-		end
-	end
-	return list
+local function getCash()
+    local stats = player:FindFirstChild("leaderstats")
+    return stats and stats:FindFirstChild("Cash") and stats.Cash.Value or 0
+end
+
+local function getTycoonRoot()
+    local folder = workspace:FindFirstChild("Tycoon")
+    folder = folder and (folder:FindFirstChild("Tycoons") or folder)
+    if not folder then return end
+    for _, t in ipairs(folder:GetChildren()) do
+        if t.Name == player.Team.Name then return t end
+    end
+end
+
+local function getButtons(tycoon)
+    local btns = tycoon:FindFirstChild("UnpurchasedButtons")
+    if not btns then return {} end
+    local list = {}
+    for _, btn in ipairs(btns:GetChildren()) do
+        local price = btn:GetAttribute("Price")
+        if btn:GetAttribute("ButtonType") == "Cash" and price then
+            table.insert(list, {instance = btn, price = price})
+        end
+    end
+    return list
+end
+
+local function getButtonCFrame(btn)
+    if btn:IsA("BasePart") then return btn.CFrame end
+    if btn:IsA("Model") then
+        if btn.PrimaryPart then return btn.PrimaryPart.CFrame end
+        local p = btn:FindFirstChildWhichIsA("BasePart")
+        return p and p.CFrame
+    end
+end
+
+----------------------------------------------------------------
+-- MOVEMENT
+----------------------------------------------------------------
+local function tweenTo(cf)
+    if MODE == "Instant" then
+        hrp.CFrame = cf
+        return
+    end
+    local dist = (hrp.Position - cf.Position).Magnitude
+    local t    = math.clamp(dist / 120, 0.25, 6)
+    local tw   = TweenService:Create(hrp, TweenInfo.new(t, Enum.EasingStyle.Linear), {CFrame = cf})
+    tw:Play()
+    tw.Completed:Wait()
+end
+
+----------------------------------------------------------------
+-- TYCOON AUTO BUY LOOP
+----------------------------------------------------------------
+task.spawn(function()
+    while true do
+        if AUTO_BUY and player.Team then
+            local root = getTycoonRoot()
+            if root then
+                local cash    = getCash()
+                local buttons = getButtons(root)
+                table.sort(buttons, function(a, b) return a.price < b.price end)
+                for _, data in ipairs(buttons) do
+                    if not AUTO_BUY then break end
+                    if cash >= data.price then
+                        local cf = getButtonCFrame(data.instance)
+                        if cf then
+                            hrp.CFrame = cf + Vector3.new(0, 3, 0)
+                            task.wait(0.3)
+                            cash = getCash()
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(1)
+    end
+end)
+
+----------------------------------------------------------------
+-- VEHICLE ESP LOOP
+----------------------------------------------------------------
+task.spawn(function()
+    while true do
+        if VEHICLE_ESP then
+            for _, m in ipairs(getVehicles()) do
+                local dist   = (m:GetPivot().Position - hrp.Position).Magnitude
+                if dist > MAX_DISTANCE then continue end
+                local driver = getDriver(m)
+                if IGNORE_EMPTY and not driver then continue end
+                if IGNORE_SAME and driver and driver.Team == player.Team then continue end
+                applyVehicleHighlight(m)
+            end
+        else
+            clearVehicleHighlights()
+        end
+        task.wait(1)
+    end
+end)
+
+----------------------------------------------------------------
+-- FARMING
+----------------------------------------------------------------
+local function getDroneCollector()
+    local root = getTycoonRoot()
+    if not root then return end
+    local ok, col = pcall(function()
+        return root
+            .PurchasedObjects["Lab Terminal Screen"]
+            ["Research Screen"].Persistent.Collector
+    end)
+    return ok and col or nil
+end
+
+local function getResourceCollector()
+    local root = getTycoonRoot()
+    if not root then return end
+    local ok, plane = pcall(function()
+        return root.Essentials["Oil Collector"].Collector.Plane
+    end)
+    return ok and plane or nil
+end
+
+local function collectModel(model)
+    local pp     = model:FindFirstChild("PromptPart", true)
+    if not pp then return end
+    local prompt = pp:FindFirstChildWhichIsA("ProximityPrompt", true)
+    if not prompt or not prompt.Enabled then return end
+    tweenTo(pp.CFrame)
+    task.wait(0.3)
+    hrp.CFrame = pp.CFrame + Vector3.new(0, 3, 0)
+    pcall(function() fireproximityprompt(prompt) end)
+    local t0 = tick()
+    repeat task.wait(0.2)
+    until not prompt.Parent or not prompt.Enabled or tick() - t0 > 10
+    local plane = getResourceCollector()
+    if plane then tweenTo(plane.CFrame + Vector3.new(0, 3, 0)) end
 end
 
 local function interactDrone(drone)
-	local pp = drone:FindFirstChild("PromptPart", true)
-	if not pp then return end
-	local prompt = pp:FindFirstChildWhichIsA("ProximityPrompt", true)
-	if not prompt then return end
-	hrp.CFrame = pp.CFrame + Vector3.new(0, 3, 0)
-	task.wait(0.3)
-	pcall(function() fireproximityprompt(prompt) end)
-	local t0 = tick()
-	repeat task.wait(0.2)
-	until not prompt.Parent or not prompt.Enabled or tick() - t0 > 15
+    local pp     = drone:FindFirstChild("PromptPart", true)
+    if not pp then return end
+    local prompt = pp:FindFirstChildWhichIsA("ProximityPrompt", true)
+    if not prompt then return end
+    hrp.CFrame = pp.CFrame + Vector3.new(0, 3, 0)
+    task.wait(0.3)
+    pcall(function() fireproximityprompt(prompt) end)
+    local t0 = tick()
+    repeat task.wait(0.2)
+    until not prompt.Parent or not prompt.Enabled or tick() - t0 > 15
 end
 
 local function deliverDrone()
-	local collector = getDroneCollector()
-	if collector then
-		hrp.CFrame = collector.CFrame + Vector3.new(0, 3, 0)
-	end
-	local hum = character:FindFirstChildWhichIsA("Humanoid")
-	if not hum then return end
-	local duration = math.random(10, 15)
-	local start = tick()
-	local lastJump = 0
-	while tick() - start < duration do
-		if tick() - lastJump >= 2 then
-			hum:ChangeState(Enum.HumanoidStateType.Jumping)
-			lastJump = tick()
-		end
-		task.wait(0.1)
-	end
+    local col = getDroneCollector()
+    if col then hrp.CFrame = col.CFrame + Vector3.new(0, 3, 0) end
+    local hum     = character and character:FindFirstChildWhichIsA("Humanoid")
+    if not hum then return end
+    local finish  = tick() + math.random(10, 15)
+    local lastJump = 0
+    while tick() < finish do
+        if tick() - lastJump >= 2 then
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+            lastJump = tick()
+        end
+        task.wait(0.1)
+    end
 end
 
+task.spawn(function()
+    while true do
+        if CRATE_FARM then
+            for _, c in ipairs(crateFolder:GetChildren()) do
+                if not CRATE_FARM then break end
+                if c:IsA("Model") then collectModel(c) end
+            end
+        end
+        if OIL_FARM then
+            for _, o in ipairs(oilFolder:GetChildren()) do
+                if not OIL_FARM then break end
+                if o:IsA("Model") then collectModel(o) end
+            end
+        end
+        task.wait(2)
+    end
+end)
+
+task.spawn(function()
+    while true do
+        if DRONE_FARM then
+            for _, d in ipairs(droneFolder:GetChildren()) do
+                if not DRONE_FARM then break end
+                if d:IsA("Model") and d.Name:lower():find("crasheddrone") then
+                    interactDrone(d)
+                    deliverDrone()
+                end
+            end
+        end
+        task.wait(2)
+    end
+end)
+
 ----------------------------------------------------------------
--- SPECTATE
+-- SPECTATE HELPERS
 ----------------------------------------------------------------
 local function spectate(plr)
-	if plr and plr.Character then
-		local hum = plr.Character:FindFirstChildWhichIsA("Humanoid")
-		if hum then camera.CameraSubject = hum end
-	end
+    if not plr or not plr.Character then return end
+    local hum = plr.Character:FindFirstChildWhichIsA("Humanoid")
+    if hum then camera.CameraSubject = hum end
 end
 
-local function getCrates()
-	local list = {}
-	for _, c in ipairs(crateFolder:GetChildren()) do
-		if c:IsA("Model") then table.insert(list, c) end
-	end
-	return list
+local function resetCamera()
+    if character then
+        local hum = character:FindFirstChildWhichIsA("Humanoid")
+        if hum then camera.CameraSubject = hum end
+    end
 end
 
-local function getOilBarrels()
-	local list = {}
-	for _, o in ipairs(oilFolder:GetChildren()) do
-		if o:IsA("Model") then table.insert(list, o) end
-	end
-	return list
+local function getPlayerNames()
+    local names = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= player then
+            table.insert(names, p.Name)
+        end
+    end
+    table.sort(names)
+    return names
 end
 
-----------------------------------------------------------------
--- BACKGROUND LOOPS
-----------------------------------------------------------------
-task.spawn(function()
-	while true do
-		if AUTO_BUY and player.Team then
-			local tycoon = getPlayerTycoon()
-			if tycoon then
-				local cash = getCash()
-				local buttons = getButtons(tycoon)
-				table.sort(buttons, function(a, b) return a.price < b.price end)
-				for _, data in ipairs(buttons) do
-					if not AUTO_BUY then break end
-					if cash >= data.price then
-						buyButton(data.instance)
-						task.wait(0.4)
-						cash = getCash()
-					end
-				end
-			end
-		end
-		task.wait(1)
-	end
-end)
-
-task.spawn(function()
-	while true do
-		if VEHICLE_ESP then
-			for _, m in ipairs(getVehicles()) do
-				local dist = (m:GetPivot().Position - hrp.Position).Magnitude
-				if dist > MAX_DISTANCE then continue end
-				local driver = getDriver(m)
-				if IGNORE_EMPTY and not driver then continue end
-				if IGNORE_SAME_TEAM and driver and driver.Team == player.Team then continue end
-				applyVehicleHighlight(m)
-			end
-		else
-			clearVehicleHighlights()
-		end
-		task.wait(1)
-	end
-end)
-
-RunService.RenderStepped:Connect(function()
-	if not VEHICLE_ESP then return end
-	local t = tick()
-	local color = Color3.fromHSV((t % 5) / 5, 1, 1)
-	for _, h in pairs(vehicleHighlights) do
-		if h then
-			h.FillColor = color
-			h.OutlineColor = color
-		end
-	end
-end)
-
-task.spawn(function()
-	while true do
-		if CRATE_FARM then
-			for _, c in ipairs(getCrates()) do
-				if not CRATE_FARM then break end
-				collectModel(c)
-			end
-		end
-		if OIL_FARM then
-			for _, o in ipairs(getOilBarrels()) do
-				if not OIL_FARM then break end
-				collectModel(o)
-			end
-		end
-		task.wait(2)
-	end
-end)
-
-task.spawn(function()
-	while true do
-		if DRONE_FARM then
-			for _, d in ipairs(getDrones()) do
-				if not DRONE_FARM then break end
-				interactDrone(d)
-				deliverDrone()
-			end
-		end
-		task.wait(2)
-	end
-end)
+local function getNearestPlayer()
+    local nearest, best = nil, math.huge
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            local d = (p.Character.HumanoidRootPart.Position - hrp.Position).Magnitude
+            if d < best then best = d; nearest = p end
+        end
+    end
+    return nearest
+end
 
 ----------------------------------------------------------------
 -- RAYFIELD WINDOW
 ----------------------------------------------------------------
 local Window = Rayfield:CreateWindow({
-	Name = "Warp",
-	Icon = "shield",
-	LoadingTitle = "Warp Suite",
-	LoadingSubtitle = "War Tycoon Hub",
-	Theme = "Ocean",
-	ToggleUIKeybind = "K",
-	DisableRayfieldPrompts = false,
-	DisableBuildWarnings = false,
-	ConfigurationSaving = {
-		Enabled = true,
-		FolderName = "WarpSuite",
-		FileName = "Config"
-	},
-	Discord = { Enabled = false, Invite = "noinvitelink", RememberJoins = true },
-   KeySystem = false, -- Set this to true to use our key system
+    Name              = "Warp",
+    Icon              = "shield",
+    LoadingTitle      = "Warp Suite",
+    LoadingSubtitle   = "War Tycoon Hub  |  v2.0",
+    Theme             = "Ocean",
+    ToggleUIKeybind   = "K",
+    DisableRayfieldPrompts  = false,
+    DisableBuildWarnings    = false,
+    ConfigurationSaving = {
+        Enabled    = true,
+        FolderName = "WarpSuite",
+        FileName   = "Config",
+    },
+    Discord  = {Enabled = false, Invite = "", RememberJoins = true},
+    KeySystem = false,
 })
 
 ----------------------------------------------------------------
@@ -718,221 +840,237 @@ local Window = Rayfield:CreateWindow({
 ----------------------------------------------------------------
 local CombatTab = Window:CreateTab("Combat", "crosshair")
 
+-- ── Vehicle ESP ──────────────────────────────────────────────
 CombatTab:CreateSection("Vehicle ESP")
 
 CombatTab:CreateToggle({
-	Name = "Vehicle ESP",
-	CurrentValue = false,
-	Flag = "VehicleESP",
-	Callback = function(val)
-		VEHICLE_ESP = val
-		if not val then clearVehicleHighlights() end
-	end
+    Name = "Enable Vehicle ESP", CurrentValue = false, Flag = "VehicleESP",
+    Callback = function(v)
+        VEHICLE_ESP = v
+        if not v then clearVehicleHighlights() end
+    end
 })
-
 CombatTab:CreateToggle({
-	Name = "Ignore Empty Vehicles",
-	CurrentValue = IGNORE_EMPTY,
-	Flag = "IgnoreEmpty",
-	Callback = function(val) IGNORE_EMPTY = val end
+    Name = "Ignore Empty Vehicles", CurrentValue = true, Flag = "IgnoreEmpty",
+    Callback = function(v) IGNORE_EMPTY = v end
 })
-
 CombatTab:CreateToggle({
-	Name = "Ignore Same Team",
-	CurrentValue = IGNORE_SAME_TEAM,
-	Flag = "IgnoreSameTeam",
-	Callback = function(val) IGNORE_SAME_TEAM = val end
+    Name = "Ignore Same Team", CurrentValue = false, Flag = "IgnoreSameTeam",
+    Callback = function(v) IGNORE_SAME = v end
 })
-
 CombatTab:CreateSlider({
-	Name = "Max ESP Distance",
-	Range = {100, 5000},
-	Increment = 100,
-	Suffix = " studs",
-	CurrentValue = MAX_DISTANCE,
-	Flag = "MaxDistance",
-	Callback = function(val) MAX_DISTANCE = val end
+    Name = "Max ESP Distance", Range = {100, 5000}, Increment = 100,
+    Suffix = " studs", CurrentValue = 2000, Flag = "MaxDist",
+    Callback = function(v) MAX_DISTANCE = v end
 })
 
+-- ── Aimbot ───────────────────────────────────────────────────
+CombatTab:CreateSection("Aimbot  |  Hold RMB to aim")
+
+CombatTab:CreateToggle({
+    Name = "Aimbot Enabled", CurrentValue = false, Flag = "AimbotEnable",
+    Callback = function(v) AIMBOT.Enabled = v end
+})
+CombatTab:CreateToggle({
+    Name = "Team Check", CurrentValue = false, Flag = "AimbotTC",
+    Callback = function(v) AIMBOT.TeamCheck = v end
+})
+CombatTab:CreateToggle({
+    Name = "Wall Check", CurrentValue = false, Flag = "AimbotWC",
+    Callback = function(v) AIMBOT.WallCheck = v end
+})
+CombatTab:CreateToggle({
+    Name = "Show FOV Circle", CurrentValue = false, Flag = "AimbotFovShow",
+    Callback = function(v) AIMBOT.ShowFov = v end
+})
+CombatTab:CreateSlider({
+    Name = "FOV Radius", Range = {10, 500}, Increment = 5,
+    Suffix = "px", CurrentValue = 150, Flag = "AimbotFov",
+    Callback = function(v) AIMBOT.Fov = v end
+})
+CombatTab:CreateSlider({
+    Name = "Smoothing", Range = {0, 100}, Increment = 1,
+    Suffix = "%", CurrentValue = 0, Flag = "AimbotSmooth",
+    Callback = function(v) AIMBOT.Smoothing = v end
+})
+CombatTab:CreateDropdown({
+    Name = "Aim Part", Options = {"Head", "HumanoidRootPart", "UpperTorso"},
+    CurrentOption = {"Head"}, Flag = "AimbotPart",
+    Callback = function(sel) AIMBOT.AimPart = sel[1] end
+})
+CombatTab:CreateColorPicker({
+    Name = "FOV Circle Color", Color = AIMBOT.FovColor, Flag = "AimbotFovColor",
+    Callback = function(c) AIMBOT.FovColor = c end
+})
+
+-- ── Spectate ─────────────────────────────────────────────────
 CombatTab:CreateSection("Spectate")
 
-CombatTab:CreateButton({
-	Name = "Spectate Nearest Player",
-	Callback = function()
-		local nearest, dist = nil, math.huge
-		for _, p in ipairs(Players:GetPlayers()) do
-			if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-				local d = (p.Character.HumanoidRootPart.Position - hrp.Position).Magnitude
-				if d < dist then dist = d; nearest = p end
-			end
-		end
-		spectate(nearest)
-		Rayfield:Notify({
-			Title = nearest and "Spectating" or "No Target",
-			Content = nearest and "Now spectating " .. nearest.Name or "No nearby players found.",
-			Duration = 3,
-			Image = nearest and "eye" or "user-x"
-		})
-	end
+local SpectateDropdown = CombatTab:CreateDropdown({
+    Name = "Spectate Player",
+    Options = getPlayerNames(),
+    CurrentOption = {},
+    MultipleOptions = false,
+    Flag = "SpectateTarget",
+    Callback = function(sel)
+        if not sel or not sel[1] then return end
+        local target = Players:FindFirstChild(sel[1])
+        spectate(target)
+        Rayfield:Notify({
+            Title   = "Spectating",
+            Content = "Now spectating " .. sel[1],
+            Duration = 3,
+            Image   = "eye",
+        })
+    end
 })
 
 CombatTab:CreateButton({
-	Name = "Return to Own Camera",
-	Callback = function()
-		camera.CameraSubject = character:FindFirstChildWhichIsA("Humanoid")
-		Rayfield:Notify({ Title = "Camera Restored", Content = "Returned to your character.", Duration = 2, Image = "camera" })
-	end
+    Name = "Spectate Nearest Player",
+    Callback = function()
+        local target = getNearestPlayer()
+        spectate(target)
+        Rayfield:Notify({
+            Title   = target and "Spectating" or "No Target",
+            Content = target and ("Now spectating " .. target.Name) or "No nearby players found.",
+            Duration = 3,
+            Image   = target and "eye" or "user-x",
+        })
+    end
 })
+
+CombatTab:CreateButton({
+    Name = "Refresh Player List",
+    Callback = function()
+        local names = getPlayerNames()
+        SpectateDropdown:Refresh(names)
+        Rayfield:Notify({
+            Title   = "Refreshed",
+            Content = #names .. " player(s) listed.",
+            Duration = 2,
+            Image   = "refresh-cw",
+        })
+    end
+})
+
+CombatTab:CreateButton({
+    Name = "Return to Own Camera",
+    Callback = function()
+        resetCamera()
+        Rayfield:Notify({
+            Title   = "Camera Restored",
+            Content = "Back to your character.",
+            Duration = 2,
+            Image   = "camera",
+        })
+    end
+})
+
+-- Auto-refresh spectate list when players join/leave
+Players.PlayerAdded:Connect(function()
+    SpectateDropdown:Refresh(getPlayerNames())
+end)
+Players.PlayerRemoving:Connect(function()
+    task.wait(0.1)
+    SpectateDropdown:Refresh(getPlayerNames())
+end)
 
 ----------------------------------------------------------------
 -- TAB: PLAYER ESP
 ----------------------------------------------------------------
 local ESPTab = Window:CreateTab("Player ESP", "eye")
 
+-- ── Box ESP ───────────────────────────────────────────────────
 ESPTab:CreateSection("Box ESP")
 
 ESPTab:CreateToggle({
-	Name = "Box ESP",
-	CurrentValue = false,
-	Flag = "BoxESP",
-	Callback = function(val) ESP.Box.Enabled = val end
+    Name = "Box ESP", CurrentValue = false, Flag = "BoxESP",
+    Callback = function(v) ESP.Box.Enabled = v end
 })
-
 ESPTab:CreateToggle({
-	Name = "Show Name",
-	CurrentValue = false,
-	Flag = "ESPName",
-	Callback = function(val) ESP.Box.Name = val end
+    Name = "Show Name", CurrentValue = false, Flag = "BoxName",
+    Callback = function(v) ESP.Box.Name = v end
 })
-
 ESPTab:CreateToggle({
-	Name = "Show Distance",
-	CurrentValue = false,
-	Flag = "ESPDistance",
-	Callback = function(val) ESP.Box.Distance = val end
+    Name = "Show Distance", CurrentValue = false, Flag = "BoxDist",
+    Callback = function(v) ESP.Box.Distance = v end
 })
-
 ESPTab:CreateToggle({
-	Name = "Show Health",
-	CurrentValue = false,
-	Flag = "ESPHealth",
-	Callback = function(val) ESP.Box.Health = val end
+    Name = "Show Health", CurrentValue = false, Flag = "BoxHealth",
+    Callback = function(v) ESP.Box.Health = v end
 })
-
 ESPTab:CreateToggle({
-	Name = "Team Check (Box)",
-	CurrentValue = false,
-	Flag = "ESPBoxTeamCheck",
-	Callback = function(val) ESP.Box.TeamCheck = val end
+    Name = "Team Check", CurrentValue = false, Flag = "BoxTC",
+    Callback = function(v) ESP.Box.TeamCheck = v end
 })
-
 ESPTab:CreateDropdown({
-	Name = "Health Display",
-	Options = {"Bar", "Text", "Both"},
-	CurrentOption = {"Bar"},
-	Flag = "ESPHealthType",
-	Callback = function(selected) ESP.Box.HealthType = selected[1] end
+    Name = "Health Display Mode",
+    Options = {"Bar", "Text", "Both"},
+    CurrentOption = {"Bar"},
+    Flag = "BoxHealthType",
+    Callback = function(sel) ESP.Box.HealthType = sel[1] end
 })
-
 ESPTab:CreateColorPicker({
-	Name = "Box Color",
-	Color = ESP.Box.Color,
-	Flag = "ESPBoxColor",
-	Callback = function(col) ESP.Box.Color = col end
+    Name = "Box Color", Color = ESP.Box.Color, Flag = "BoxColor",
+    Callback = function(c) ESP.Box.Color = c end
 })
 
+-- ── Outline ESP ───────────────────────────────────────────────
 ESPTab:CreateSection("Outline ESP")
 
 ESPTab:CreateToggle({
-	Name = "Outlines",
-	CurrentValue = false,
-	Flag = "ESPOutlines",
-	Callback = function(val) ESP.Outlines.Enabled = val end
+    Name = "Outlines", CurrentValue = false, Flag = "OutlineEnable",
+    Callback = function(v) ESP.Outlines.Enabled = v end
 })
-
 ESPTab:CreateToggle({
-	Name = "Always on Top",
-	CurrentValue = true,
-	Flag = "ESPOutlinesTop",
-	Callback = function(val) ESP.Outlines.AlwaysOnTop = val end
+    Name = "Always on Top", CurrentValue = true, Flag = "OutlineTop",
+    Callback = function(v) ESP.Outlines.AlwaysOnTop = v end
 })
-
 ESPTab:CreateToggle({
-	Name = "Team Check (Outlines)",
-	CurrentValue = false,
-	Flag = "ESPOutlineTeamCheck",
-	Callback = function(val) ESP.Outlines.TeamCheck = val end
+    Name = "Team Check", CurrentValue = false, Flag = "OutlineTC",
+    Callback = function(v) ESP.Outlines.TeamCheck = v end
 })
-
 ESPTab:CreateToggle({
-	Name = "Use Team Color (Outlines)",
-	CurrentValue = false,
-	Flag = "ESPOutlineTeamColor",
-	Callback = function(val) ESP.Outlines.TeamColor = val end
+    Name = "Use Team Color", CurrentValue = false, Flag = "OutlineTColor",
+    Callback = function(v) ESP.Outlines.TeamColor = v end
 })
-
 ESPTab:CreateSlider({
-	Name = "Fill Transparency",
-	Range = {0, 100},
-	Increment = 5,
-	Suffix = "%",
-	CurrentValue = 0,
-	Flag = "ESPFillTrans",
-	Callback = function(val) ESP.Outlines.FillTransparency = val / 100 end
+    Name = "Fill Transparency", Range = {0, 100}, Increment = 5,
+    Suffix = "%", CurrentValue = 0, Flag = "OutlineFillTrans",
+    Callback = function(v) ESP.Outlines.FillTransparency = v / 100 end
 })
-
 ESPTab:CreateSlider({
-	Name = "Outline Transparency",
-	Range = {0, 100},
-	Increment = 5,
-	Suffix = "%",
-	CurrentValue = 0,
-	Flag = "ESPOutlineTrans",
-	Callback = function(val) ESP.Outlines.OutlineTransparency = val / 100 end
+    Name = "Outline Transparency", Range = {0, 100}, Increment = 5,
+    Suffix = "%", CurrentValue = 0, Flag = "OutlineTrans",
+    Callback = function(v) ESP.Outlines.OutlineTransparency = v / 100 end
 })
-
 ESPTab:CreateColorPicker({
-	Name = "Fill Color",
-	Color = ESP.Outlines.FillColor,
-	Flag = "ESPFillColor",
-	Callback = function(col) ESP.Outlines.FillColor = col end
+    Name = "Fill Color", Color = ESP.Outlines.FillColor, Flag = "OutlineFillColor",
+    Callback = function(c) ESP.Outlines.FillColor = c end
 })
-
 ESPTab:CreateColorPicker({
-	Name = "Outline Color",
-	Color = ESP.Outlines.OutlineColor,
-	Flag = "ESPOutlineColor",
-	Callback = function(col) ESP.Outlines.OutlineColor = col end
+    Name = "Outline Color", Color = ESP.Outlines.OutlineColor, Flag = "OutlineColor",
+    Callback = function(c) ESP.Outlines.OutlineColor = c end
 })
 
+-- ── Tracers ───────────────────────────────────────────────────
 ESPTab:CreateSection("Tracers")
 
 ESPTab:CreateToggle({
-	Name = "Tracers",
-	CurrentValue = false,
-	Flag = "ESPTracers",
-	Callback = function(val) ESP.Tracers.Enabled = val end
+    Name = "Tracers", CurrentValue = false, Flag = "TracerEnable",
+    Callback = function(v) ESP.Tracers.Enabled = v end
 })
-
 ESPTab:CreateToggle({
-	Name = "Team Check (Tracers)",
-	CurrentValue = false,
-	Flag = "ESPTracerTeamCheck",
-	Callback = function(val) ESP.Tracers.TeamCheck = val end
+    Name = "Team Check", CurrentValue = false, Flag = "TracerTC",
+    Callback = function(v) ESP.Tracers.TeamCheck = v end
 })
-
 ESPTab:CreateToggle({
-	Name = "Use Team Color (Tracers)",
-	CurrentValue = false,
-	Flag = "ESPTracerTeamColor",
-	Callback = function(val) ESP.Tracers.TeamColor = val end
+    Name = "Use Team Color", CurrentValue = false, Flag = "TracerTColor",
+    Callback = function(v) ESP.Tracers.TeamColor = v end
 })
-
 ESPTab:CreateColorPicker({
-	Name = "Tracer Color",
-	Color = ESP.Tracers.Color,
-	Flag = "ESPTracerColor",
-	Callback = function(col) ESP.Tracers.Color = col end
+    Name = "Tracer Color", Color = ESP.Tracers.Color, Flag = "TracerColor",
+    Callback = function(c) ESP.Tracers.Color = c end
 })
 
 ----------------------------------------------------------------
@@ -943,31 +1081,23 @@ local FarmTab = Window:CreateTab("Farming", "package")
 FarmTab:CreateSection("Collectibles")
 
 FarmTab:CreateToggle({
-	Name = "Crate Farm",
-	CurrentValue = false,
-	Flag = "CrateFarm",
-	Callback = function(val) CRATE_FARM = val end
+    Name = "Crate Farm", CurrentValue = false, Flag = "CrateFarm",
+    Callback = function(v) CRATE_FARM = v end
 })
-
 FarmTab:CreateToggle({
-	Name = "Oil Barrel Farm",
-	CurrentValue = false,
-	Flag = "OilFarm",
-	Callback = function(val) OIL_FARM = val end
+    Name = "Oil Barrel Farm", CurrentValue = false, Flag = "OilFarm",
+    Callback = function(v) OIL_FARM = v end
 })
 
 FarmTab:CreateSection("Drone Recovery")
 
 FarmTab:CreateToggle({
-	Name = "Drone Farm",
-	CurrentValue = false,
-	Flag = "DroneFarm",
-	Callback = function(val) DRONE_FARM = val end
+    Name = "Drone Farm", CurrentValue = false, Flag = "DroneFarm",
+    Callback = function(v) DRONE_FARM = v end
 })
-
 FarmTab:CreateParagraph({
-	Title = "How Drone Farm Works",
-	Content = "Locates crashed drones, interacts with them to collect their payload, then delivers to the return point. Jumps periodically during delivery to prevent AFK kicks."
+    Title   = "How Drone Farm Works",
+    Content = "Locates crashed drones on the map, collects their payload via proximity prompt, then delivers to your lab terminal. Jumps periodically during delivery to prevent AFK kicks.",
 })
 
 ----------------------------------------------------------------
@@ -978,15 +1108,12 @@ local TycoonTab = Window:CreateTab("Tycoon", "building-2")
 TycoonTab:CreateSection("Auto Purchase")
 
 TycoonTab:CreateToggle({
-	Name = "Auto Buy Buttons",
-	CurrentValue = false,
-	Flag = "AutoBuy",
-	Callback = function(val) AUTO_BUY = val end
+    Name = "Auto Buy Buttons", CurrentValue = false, Flag = "AutoBuy",
+    Callback = function(v) AUTO_BUY = v end
 })
-
 TycoonTab:CreateParagraph({
-	Title = "Smart Buying",
-	Content = "Purchases tycoon buttons cheapest-first using your current cash. Checks every second and only buys what you can afford."
+    Title   = "Smart Buying",
+    Content = "Purchases the cheapest available tycoon buttons first using your current cash balance. Checks every second and only buys what you can currently afford.",
 })
 
 ----------------------------------------------------------------
@@ -997,50 +1124,55 @@ local SettingsTab = Window:CreateTab("Settings", "settings")
 SettingsTab:CreateSection("Movement Mode")
 
 SettingsTab:CreateDropdown({
-	Name = "Teleport Style",
-	Options = {"Tween", "Instant"},
-	CurrentOption = {"Tween"},
-	Flag = "TeleportMode",
-	Callback = function(selected) MODE = selected[1] end
+    Name = "Teleport Style",
+    Options = {"Tween", "Instant"},
+    CurrentOption = {"Tween"},
+    Flag = "TeleportMode",
+    Callback = function(sel) MODE = sel[1] end
 })
-
 SettingsTab:CreateParagraph({
-	Title = "Tween vs Instant",
-	Content = "Tween smoothly slides your character to targets (more natural). Instant teleports immediately (faster)."
+    Title   = "Tween vs Instant",
+    Content = "Tween smoothly slides your character to destinations (more natural-looking). Instant teleports immediately with no animation (faster but more obvious).",
 })
 
 SettingsTab:CreateSection("Keybinds")
 
 SettingsTab:CreateParagraph({
-	Title = "Keyboard Shortcuts",
-	Content = "F — Toggle Vehicle ESP\nG — Spectate nearest player\nH — Return to own camera\nK — Toggle Rayfield UI"
+    Title   = "Keyboard Shortcuts",
+    Content = "F — Toggle Vehicle ESP\nG — Spectate nearest player\nH — Return to own camera\nK — Toggle Rayfield UI\nRMB (hold) — Aimbot",
 })
 
 SettingsTab:CreateSection("Interface")
 
 SettingsTab:CreateButton({
-	Name = "Destroy UI",
-	Callback = function() Rayfield:Destroy() end
+    Name = "Destroy UI",
+    Callback = function()
+        Rayfield:Destroy()
+    end
 })
 
 ----------------------------------------------------------------
 -- KEYBINDS
 ----------------------------------------------------------------
 UserInputService.InputBegan:Connect(function(i, gp)
-	if gp then return end
-	if i.KeyCode == Enum.KeyCode.F then
-		VEHICLE_ESP = not VEHICLE_ESP
-		if not VEHICLE_ESP then clearVehicleHighlights() end
-	elseif i.KeyCode == Enum.KeyCode.G then
-		local nearest, dist = nil, math.huge
-		for _, p in ipairs(Players:GetPlayers()) do
-			if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-				local d = (p.Character.HumanoidRootPart.Position - hrp.Position).Magnitude
-				if d < dist then dist = d; nearest = p end
-			end
-		end
-		spectate(nearest)
-	elseif i.KeyCode == Enum.KeyCode.H then
-		camera.CameraSubject = character:FindFirstChildWhichIsA("Humanoid")
-	end
+    if gp then return end
+    if i.KeyCode == Enum.KeyCode.F then
+        VEHICLE_ESP = not VEHICLE_ESP
+        if not VEHICLE_ESP then clearVehicleHighlights() end
+        Rayfield:Notify({
+            Title   = "Vehicle ESP",
+            Content = VEHICLE_ESP and "Enabled" or "Disabled",
+            Duration = 1.5, Image = "car",
+        })
+    elseif i.KeyCode == Enum.KeyCode.G then
+        local t = getNearestPlayer()
+        spectate(t)
+    elseif i.KeyCode == Enum.KeyCode.H then
+        resetCamera()
+    end
 end)
+
+----------------------------------------------------------------
+-- LOAD SAVED CONFIG
+----------------------------------------------------------------
+Rayfield:LoadConfiguration()
